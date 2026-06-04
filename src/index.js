@@ -27,7 +27,7 @@ class TrainsRealtime extends HTMLElement {
   }
 
   static get observedAttributes() {
-    return ['siri-url', 'dataset-id', 'refresh-interval', 'height'];
+    return ['siri-url', 'dataset-id', 'refresh-interval'];
   }
 
   get _siriUrl() {
@@ -41,19 +41,10 @@ class TrainsRealtime extends HTMLElement {
     return Math.max(10, parseInt(this.getAttribute('refresh-interval') || '30')) * 1000;
   }
 
-  get _height() {
-    return this.getAttribute('height') || '500px';
-  }
-
-  attributeChangedCallback(name, _old, _new) {
+  attributeChangedCallback(_name, _old, _new) {
     if (!this._map) return;
-    if (name === 'height') {
-      this.shadow.querySelector('#container').style.height = this._height;
-      this._map.invalidateSize();
-    } else {
-      this._restartTimer();
-      this._fetchAndUpdate();
-    }
+    this._restartTimer();
+    this._fetchAndUpdate();
   }
 
   connectedCallback() { this._mount(); }
@@ -67,10 +58,10 @@ class TrainsRealtime extends HTMLElement {
     this.shadow.innerHTML = `
       <style>
         ${leafletCSS}
-        :host { display: block; font-family: sans-serif; }
+        :host { display: block; height: 100%; font-family: sans-serif; }
         #container {
           display: flex;
-          height: ${this._height};
+          height: 100%;
           overflow: hidden;
           position: relative;
         }

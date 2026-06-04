@@ -51,13 +51,6 @@
         "label": "Auto-refresh interval in seconds (minimum 10)",
         "required": false,
         "options": { "default": 30 }
-      },
-      {
-        "key": "height",
-        "type": "text",
-        "label": "Map height (any CSS length value)",
-        "required": false,
-        "options": { "default": "500px" }
       }
     ]
   }

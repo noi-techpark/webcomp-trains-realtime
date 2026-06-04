@@ -1,5 +1,5 @@
 {
-  "name": "webcomp-trains-realtime-sta",
+  "name": "webcomp-trains-realtime",
   "private": true,
   "scripts": {
     "build": "webpack --config webpack.prod.js",

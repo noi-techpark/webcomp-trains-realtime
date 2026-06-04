@@ -1,10 +1,10 @@
 {
-  "title": "Trains Realtime – South Tyrol",
-  "shortName": "trains-realtime-sta",
-  "description": "Displays real-time train positions on a map using the SIRI-lite vehicle monitoring feed.",
-  "descriptionAbstract": "Real-time train position map for South Tyrol powered by the SIRI-lite JSON feed. Shows all active trains with line labels, delay colour-coding (green/orange/red) and a click-to-open popup with full journey details.",
+  "title": "Trains Realtime",
+  "shortName": "trains-realtime",
+  "description": "Displays real-time train positions on a map using a vehicle monitoring feed.",
+  "descriptionAbstract": "Real-time train position map. Shows all active trains with line labels, delay colour-coding (green/orange/red) and a click-to-open popup with full journey details.",
   "license": "AGPL-3.0-or-later",
-  "repositoryUrl": "https://github.com/noi-techpark/webcomp-trains-realtime-sta.git",
+  "repositoryUrl": "https://github.com/noi-techpark/webcomp-trains-realtime.git",
   "copyrightHolders": [
     {
       "name": "NOI Techpark",
@@ -22,14 +22,14 @@
     }
   ],
   "image": "wcs-logo.png",
-  "searchTags": ["trains", "realtime", "south-tyrol", "siri", "public-transport", "map", "leaflet"],
+  "searchTags": ["trains", "realtime", "public-transport", "map", "leaflet"],
   "dist": {
     "basePath": "dist",
-    "files": ["webcomp-trains-realtime-sta.min.js"],
+    "files": ["webcomp-trains-realtime.min.js"],
     "scripts": []
   },
   "configuration": {
-    "tagName": "trains-realtime-sta",
+    "tagName": "trains-realtime",
     "options": [
       {
         "key": "dataset-id",

@@ -6,7 +6,7 @@ module.exports = {
   mode: 'development',
   entry: './src/index.js',
   output: {
-    filename: 'webcomp-trains-realtime-sta.js',
+    filename: 'webcomp-trains-realtime.js',
     clean: true,
   },
   module: {

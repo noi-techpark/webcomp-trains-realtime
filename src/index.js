@@ -7,14 +7,23 @@ import leafletCSS from 'leaflet/dist/leaflet.css';
 
 const DEFAULT_SIRI_BASE = 'https://siri.api.dev.testingmachine.eu/anshar/rest/vm/';
 
-class TrainsRealtimeSta extends HTMLElement {
+const DOT_R          = 5;
+const PILL_H         = 16;
+const LABEL_OFFSET_X = DOT_R * 2 + 4; // px right of dot centre where pill left edge starts
+const STACK_MARGIN   = 3;              // px gap between stacked pills
+
+class TrainsRealtime extends HTMLElement {
   constructor() {
     super();
-    this.shadow    = this.attachShadow({ mode: 'open' });
-    this._map      = null;
-    this._markers  = new Map(); // id → L.Marker
-    this._timer    = null;
-    this._vehicles = [];
+    this.shadow      = this.attachShadow({ mode: 'open' });
+    this._map        = null;
+    this._dots       = new Map(); // id → L.Marker  (exact GPS position, never moved)
+    this._labels     = new Map(); // id → L.Marker  (pill, repositioned by _declutter)
+    this._linesBg    = new Map(); // id → L.Polyline (white border underneath connector)
+    this._lines      = new Map(); // id → L.Polyline (colored connector on top)
+    this._markerData = new Map(); // id → { pillW, color }
+    this._timer      = null;
+    this._vehicles   = [];
   }
 
   static get observedAttributes() {
@@ -72,7 +81,7 @@ class TrainsRealtimeSta extends HTMLElement {
           flex-shrink: 0;
           display: flex;
           flex-direction: column;
-          border-right: 1px solid #ddd;
+          border-left: 1px solid #ddd;
           background: #fff;
           overflow: hidden;
         }
@@ -125,9 +134,34 @@ class TrainsRealtimeSta extends HTMLElement {
         }
         #status.err { background: rgba(255,235,235,0.95); border-color: #c33; color: #a00; }
 
-        .train-marker { line-height: 0; }
+        .train-dot   { line-height: 0; }
+        .train-label { line-height: 0; cursor: pointer; }
+
+        #refresh-ring {
+          position: absolute;
+          bottom: 10px; left: 10px;
+          z-index: 1000;
+          width: 32px; height: 32px;
+          pointer-events: none;
+        }
+        #refresh-ring svg { display: block; }
       </style>
       <div id="container">
+        <div id="map-wrap">
+          <div id="map"></div>
+          <div id="status">Loading&hellip;</div>
+          <div id="refresh-ring">
+            <svg width="32" height="32" viewBox="0 0 32 32">
+              <circle cx="16" cy="16" r="12" fill="none"
+                      stroke="rgba(0,0,0,0.08)" stroke-width="3"/>
+              <circle id="progress-arc" cx="16" cy="16" r="12" fill="none"
+                      stroke="rgba(52,152,219,0.65)" stroke-width="3"
+                      stroke-linecap="round"
+                      stroke-dasharray="75.398" stroke-dashoffset="75.398"
+                      transform="rotate(-90 16 16)"/>
+            </svg>
+          </div>
+        </div>
         <div id="sidebar">
           <div id="search-wrap">
             <input id="search" type="search" placeholder="Search trains&hellip;">
@@ -135,14 +169,11 @@ class TrainsRealtimeSta extends HTMLElement {
           <div id="count"></div>
           <ul id="train-list"></ul>
         </div>
-        <div id="map-wrap">
-          <div id="map"></div>
-          <div id="status">Loading&hellip;</div>
-        </div>
       </div>
     `;
 
-    this._statusEl = this.shadow.querySelector('#status');
+    this._statusEl   = this.shadow.querySelector('#status');
+    this._progressEl = this.shadow.querySelector('#progress-arc');
     this._listEl   = this.shadow.querySelector('#train-list');
     this._countEl  = this.shadow.querySelector('#count');
     this._searchEl = this.shadow.querySelector('#search');
@@ -154,10 +185,13 @@ class TrainsRealtimeSta extends HTMLElement {
     this._map = L.map(this.shadow.querySelector('#map'), { preferCanvas: true })
       .setView([46.55, 11.35], 9);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
       maxZoom: 19,
     }).addTo(this._map);
+
+    // Re-run declutter whenever the viewport changes so labels track correctly
+    this._map.on('zoomend moveend', () => this._declutter());
 
     this._fetchAndUpdate();
     this._restartTimer();
@@ -173,6 +207,7 @@ class TrainsRealtimeSta extends HTMLElement {
   }
 
   async _fetchAndUpdate() {
+    this._resetProgress();
     try {
       const res = await fetch(this._siriUrl, { headers: { Accept: 'application/json' } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -186,7 +221,24 @@ class TrainsRealtimeSta extends HTMLElement {
       this._setStatus(`${this._vehicles.length} trains · ${new Date().toLocaleTimeString()}`);
     } catch (e) {
       this._setStatus(`Error: ${e.message}`, true);
+    } finally {
+      this._startProgress();
     }
+  }
+
+  _resetProgress() {
+    const el = this._progressEl;
+    if (!el) return;
+    el.style.transition = 'none';
+    el.style.strokeDashoffset = '75.398'; // full offset = empty ring
+  }
+
+  _startProgress() {
+    const el = this._progressEl;
+    if (!el) return;
+    el.getBoundingClientRect(); // force reflow so the reset takes effect first
+    el.style.transition = `stroke-dashoffset ${this._refreshMs}ms linear`;
+    el.style.strokeDashoffset = '0'; // animate to full ring
   }
 
   _setStatus(msg, isErr = false) {
@@ -226,41 +278,47 @@ class TrainsRealtimeSta extends HTMLElement {
     return `+${min} min`;
   }
 
-  // ── icon (SVG: dot at GPS anchor + stem + label pill to the right) ────────
+  _pillWidth(vehicleId, dest) {
+    const raw = `${vehicleId} - ${dest}`;
+    const text = raw.length > 18 ? raw.substring(0, 17) + '…' : raw;
+    return Math.max(48, text.length * 6 + 14);
+  }
 
-  _makeIcon(vehicleId, dest, delaySec) {
-    const color  = this._delayColor(delaySec);
-    const raw    = `${vehicleId} - ${dest}`;
-    const label  = this._esc(raw.length > 18 ? raw.substring(0, 17) + '…' : raw);
+  // ── icons ─────────────────────────────────────────────────────────────────
 
-    const DOT_R  = 5;
-    const STEM   = 5;
-    const PILL_H = 16;
-    const pillW  = Math.max(48, label.length * 6 + 14);
-    const totalW = DOT_R * 2 + STEM + pillW;
-    const H      = 20;
-    const cy     = H / 2;
-    const pillX  = DOT_R * 2 + STEM;
-    const pillY  = (H - PILL_H) / 2;
-
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${H}" viewBox="0 0 ${totalW} ${H}">
-      <circle cx="${DOT_R}" cy="${cy}" r="${DOT_R - 1}"
+  _makeDotIcon(color) {
+    const S = DOT_R * 2;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}">
+      <circle cx="${DOT_R}" cy="${DOT_R}" r="${DOT_R - 1}"
               fill="${color}" stroke="white" stroke-width="1.5"/>
-      <line x1="${DOT_R * 2}" y1="${cy}" x2="${pillX}" y2="${cy}"
-            stroke="${color}" stroke-width="1.5"/>
-      <rect x="${pillX}" y="${pillY}" width="${pillW}" height="${PILL_H}" rx="4"
+    </svg>`;
+    return L.divIcon({
+      html: svg,
+      className: 'train-dot',
+      iconSize:   [S, S],
+      iconAnchor: [DOT_R, DOT_R], // centre of circle = GPS point
+    });
+  }
+
+  _makeLabelIcon(vehicleId, dest, delaySec) {
+    const color = this._delayColor(delaySec);
+    const raw   = `${vehicleId} - ${dest}`;
+    const label = this._esc(raw.length > 18 ? raw.substring(0, 17) + '…' : raw);
+    const pillW = Math.max(48, label.length * 6 + 14);
+
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pillW}" height="${PILL_H}">
+      <rect x="0" y="0" width="${pillW}" height="${PILL_H}" rx="4"
             fill="${color}" stroke="white" stroke-width="1"/>
-      <text x="${pillX + pillW / 2}" y="${cy + 4}" text-anchor="middle"
+      <text x="${pillW / 2}" y="${PILL_H / 2 + 4}" text-anchor="middle"
             font-size="9" font-weight="bold" fill="white"
             font-family="Arial,sans-serif">${label}</text>
     </svg>`;
 
     return L.divIcon({
       html: svg,
-      className: 'train-marker',
-      iconSize:    [totalW, H],
-      iconAnchor:  [DOT_R, cy],
-      popupAnchor: [pillW / 2, -cy],
+      className: 'train-label',
+      iconSize:   [pillW, PILL_H],
+      iconAnchor: [0, PILL_H / 2], // left-centre of pill = latlng point (connector end)
     });
   }
 
@@ -298,28 +356,144 @@ class TrainsRealtimeSta extends HTMLElement {
       const lon   = j.VehicleLocation.Longitude;
       const dest  = j.DirectionName?.[0]?.value ?? '?';
       const delay = this._delaySeconds(j.Delay);
-      const icon  = this._makeIcon(id, dest, delay);
+      const color = this._delayColor(delay);
+      const pillW = this._pillWidth(id, dest);
       const popup = this._popupHtml(j, id, delay, v.RecordedAtTime);
 
       seen.add(id);
+      this._markerData.set(id, { pillW, color });
 
-      if (this._markers.has(id)) {
-        const m = this._markers.get(id);
-        m.setLatLng([lat, lon]);
-        m.setIcon(icon);
-        m.getPopup().setContent(popup);
-        m.getTooltip().setContent(this._esc(dest));
+      if (this._dots.has(id)) {
+        const dot   = this._dots.get(id);
+        const label = this._labels.get(id);
+        const line  = this._lines.get(id);
+        dot.setLatLng([lat, lon]);
+        dot.setIcon(this._makeDotIcon(color));
+        dot.getPopup().setContent(popup);
+        dot.getTooltip().setContent(this._esc(dest));
+        label.setIcon(this._makeLabelIcon(id, dest, delay));
+        label.getPopup().setContent(popup);
+        line.setStyle({ color });
       } else {
-        const m = L.marker([lat, lon], { icon })
+        const dot = L.marker([lat, lon], { icon: this._makeDotIcon(color), zIndexOffset: 100 })
           .bindPopup(popup)
           .bindTooltip(this._esc(dest))
           .addTo(this._map);
-        this._markers.set(id, m);
+        this._dots.set(id, dot);
+
+        const label = L.marker([lat, lon], { icon: this._makeLabelIcon(id, dest, delay) })
+          .bindPopup(popup)
+          .addTo(this._map);
+        this._labels.set(id, label);
+
+        const lineBg = L.polyline([[lat, lon], [lat, lon]], {
+          color: 'white',
+          weight: 4,
+          opacity: 1,
+        }).addTo(this._map);
+        this._linesBg.set(id, lineBg);
+
+        const line = L.polyline([[lat, lon], [lat, lon]], {
+          color,
+          weight: 1.5,
+          opacity: 0.9,
+        }).addTo(this._map);
+        this._lines.set(id, line);
       }
     }
 
-    for (const [id, m] of this._markers) {
-      if (!seen.has(id)) { m.remove(); this._markers.delete(id); }
+    for (const [id, dot] of this._dots) {
+      if (!seen.has(id)) {
+        dot.remove();
+        this._labels.get(id)?.remove();
+        this._linesBg.get(id)?.remove();
+        this._lines.get(id)?.remove();
+        this._dots.delete(id);
+        this._labels.delete(id);
+        this._linesBg.delete(id);
+        this._lines.delete(id);
+        this._markerData.delete(id);
+      }
+    }
+
+    this._declutter();
+  }
+
+  // Repositions label pills to eliminate overlaps while preserving N→S order.
+  // Dots never move — only labels and their connector lines are updated.
+  _declutter() {
+    if (!this._map || this._dots.size === 0) return;
+
+    // Collect current screen positions for all trains
+    const items = [];
+    for (const [id, dot] of this._dots) {
+      const label  = this._labels.get(id);
+      const line   = this._lines.get(id);
+      const lineBg = this._linesBg.get(id);
+      const data   = this._markerData.get(id);
+      if (!label || !line || !lineBg || !data) continue;
+      const dotPx = this._map.latLngToContainerPoint(dot.getLatLng());
+      items.push({ id, dotPx, pillW: data.pillW, label, line, lineBg, dot });
+    }
+
+    // Sort top→bottom by dot screen Y so stacking preserves geographic N→S order
+    items.sort((a, b) => a.dotPx.y - b.dotPx.y);
+
+    // Fixed obstacles: bounding boxes of every dot (pills must not cover these)
+    const dotBoxes = new Map();
+    for (const item of items) {
+      const { x, y } = item.dotPx;
+      dotBoxes.set(item.id, {
+        left: x - DOT_R, right:  x + DOT_R,
+        top:  y - DOT_R, bottom: y + DOT_R,
+      });
+    }
+
+    const placed = []; // bounding boxes of already-placed pills { left, right, top, bottom }
+
+    for (const item of items) {
+      const { id, dotPx, pillW } = item;
+      const left  = dotPx.x + LABEL_OFFSET_X;
+      const right = left + pillW;
+      let cy = dotPx.y; // natural vertical centre; pushed down when conflicting
+
+      // Iterate until this pill no longer conflicts with any placed pill or any dot
+      let resolved = false;
+      while (!resolved) {
+        const top    = cy - PILL_H / 2 - STACK_MARGIN;
+        const bottom = cy + PILL_H / 2 + STACK_MARGIN;
+        resolved = true;
+
+        // Check against already-placed pills
+        for (const p of placed) {
+          if (left >= p.right || right <= p.left) continue;
+          if (top >= p.bottom || bottom <= p.top) continue;
+          cy = p.bottom + PILL_H / 2 + STACK_MARGIN;
+          resolved = false;
+          break;
+        }
+        if (!resolved) continue;
+
+        // Check against every dot except this train's own (own dot is always left of its pill)
+        for (const [dotId, db] of dotBoxes) {
+          if (dotId === id) continue;
+          if (left >= db.right || right <= db.left) continue;
+          if (top >= db.bottom || bottom <= db.top) continue;
+          cy = db.bottom + PILL_H / 2 + STACK_MARGIN;
+          resolved = false;
+          break;
+        }
+      }
+
+      placed.push({ left, right, top: cy - PILL_H / 2, bottom: cy + PILL_H / 2 });
+
+      // Place label so its left-centre aligns with (left, cy) on screen
+      const labelLatLng = this._map.containerPointToLatLng(L.point(left, cy));
+      item.label.setLatLng(labelLatLng);
+
+      // Connector: dot GPS → label left-centre (background then foreground)
+      item.lineBg.setLatLngs([item.dot.getLatLng(), labelLatLng]);
+      item.line.setLatLngs([item.dot.getLatLng(), labelLatLng]);
     }
   }
 
@@ -365,15 +539,15 @@ class TrainsRealtimeSta extends HTMLElement {
 
     this._listEl.querySelectorAll('.ti').forEach(el => {
       el.addEventListener('click', () => {
-        const m = this._markers.get(el.dataset.id);
-        if (!m) return;
+        const dot = this._dots.get(el.dataset.id);
+        if (!dot) return;
         this._listEl.querySelectorAll('.ti').forEach(x => x.classList.remove('active'));
         el.classList.add('active');
-        this._map.setView(m.getLatLng(), Math.max(this._map.getZoom(), 12));
-        m.openPopup();
+        this._map.setView(dot.getLatLng(), Math.max(this._map.getZoom(), 12));
+        dot.openPopup();
       });
     });
   }
 }
 
-customElements.define('trains-realtime-sta', TrainsRealtimeSta);
+customElements.define('trains-realtime', TrainsRealtime);

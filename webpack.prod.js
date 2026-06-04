@@ -8,7 +8,7 @@ module.exports = {
   mode: 'production',
   entry: './src/index.js',
   output: {
-    filename: 'webcomp-trains-realtime-sta.min.js',
+    filename: 'webcomp-trains-realtime.min.js',
     path: path.resolve(__dirname, 'dist'),
   },
   module: {

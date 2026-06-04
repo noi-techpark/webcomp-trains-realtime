@@ -1,7 +1,7 @@
 version = 1
-SPDX-PackageName = "webcomp-trains-realtime-sta"
+SPDX-PackageName = "webcomp-trains-realtime"
 SPDX-PackageSupplier = "NOI Techpark <digital@noi.bz.it>"
-SPDX-PackageDownloadLocation = "https://github.com/noi-techpark/webcomp-trains-realtime-sta"
+SPDX-PackageDownloadLocation = "https://github.com/noi-techpark/webcomp-trains-realtime"
 
 [[annotations]]
 path = [".github/**", ".gitignore", "LICENSE.md", ".pre-commit-config.yaml", "**.json", ".editorconfig", ".env.example", "wcs-logo.png", "docker-compose.yml"]

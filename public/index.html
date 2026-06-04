@@ -1,0 +1,52 @@
+<!--
+SPDX-FileCopyrightText: NOI Techpark <digital@noi.bz.it>
+
+SPDX-License-Identifier: CC0-1.0
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Real-time Train Positions – South Tyrol</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 1.5em; font-family: sans-serif; background: #f5f5f5; }
+    h1 { font-size: 1.4em; margin-bottom: 0.25em; }
+    p  { color: #555; font-size: 0.9em; margin-bottom: 1em; }
+    trains-realtime-sta { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+    pre { background: #eee; padding: 0.75em 1em; border-radius: 6px; font-size: 0.85em; overflow-x: auto; }
+    .legend { display: flex; gap: 1em; font-size: 0.8em; margin-top: 0.6em; }
+    .legend span { display: inline-flex; align-items: center; gap: 4px; }
+    .dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+  <h1>Real-time Train Positions &ndash; South Tyrol / Trentino</h1>
+  <p>Live positions from the SIRI Vehicle Monitoring feed. Markers update every 30 seconds.</p>
+
+  <trains-realtime-sta
+    dataset-id="SADtrains"
+    refresh-interval="30"
+    height="580px"
+  ></trains-realtime-sta>
+
+  <div class="legend">
+    <span><span class="dot" style="background:#27ae60"></span> On time</span>
+    <span><span class="dot" style="background:#e67e22"></span> &lt; 5 min delay</span>
+    <span><span class="dot" style="background:#c0392b"></span> &ge; 5 min delay</span>
+  </div>
+
+  <p style="margin-top:1.5em">Code snippet:</p>
+  <pre><code>&lt;trains-realtime-sta
+  dataset-id="SADtrains"
+  refresh-interval="30"
+  height="500px"
+&gt;&lt;/trains-realtime-sta&gt;
+
+&lt;script src="webcomp-trains-realtime-sta.js"&gt;&lt;/script&gt;</code></pre>
+
+  <script src="webcomp-trains-realtime-sta.js"></script>
+</body>
+</html>

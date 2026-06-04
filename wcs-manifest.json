@@ -1,0 +1,64 @@
+{
+  "title": "Trains Realtime – South Tyrol",
+  "shortName": "trains-realtime-sta",
+  "description": "Displays real-time train positions on a map using the SIRI-lite vehicle monitoring feed.",
+  "descriptionAbstract": "Real-time train position map for South Tyrol powered by the SIRI-lite JSON feed. Shows all active trains with line labels, delay colour-coding (green/orange/red) and a click-to-open popup with full journey details.",
+  "license": "AGPL-3.0-or-later",
+  "repositoryUrl": "https://github.com/noi-techpark/webcomp-trains-realtime-sta.git",
+  "copyrightHolders": [
+    {
+      "name": "NOI Techpark",
+      "email": "digital@noi.bz.it",
+      "organization": "NOI S.p.A.",
+      "organizationUrl": "https://noi.bz.it"
+    }
+  ],
+  "authors": [
+    {
+      "name": "NOI Techpark",
+      "email": "digital@noi.bz.it",
+      "organization": "NOI S.p.A.",
+      "organizationUrl": "https://noi.bz.it"
+    }
+  ],
+  "image": "wcs-logo.png",
+  "searchTags": ["trains", "realtime", "south-tyrol", "siri", "public-transport", "map", "leaflet"],
+  "dist": {
+    "basePath": "dist",
+    "files": ["webcomp-trains-realtime-sta.min.js"],
+    "scripts": []
+  },
+  "configuration": {
+    "tagName": "trains-realtime-sta",
+    "options": [
+      {
+        "key": "dataset-id",
+        "type": "text",
+        "label": "SIRI dataset ID",
+        "required": false,
+        "options": { "default": "SADtrains" }
+      },
+      {
+        "key": "siri-url",
+        "type": "text",
+        "label": "Custom SIRI endpoint URL (overrides dataset-id when set)",
+        "required": false,
+        "options": { "default": "" }
+      },
+      {
+        "key": "refresh-interval",
+        "type": "number",
+        "label": "Auto-refresh interval in seconds (minimum 10)",
+        "required": false,
+        "options": { "default": 30 }
+      },
+      {
+        "key": "height",
+        "type": "text",
+        "label": "Map height (any CSS length value)",
+        "required": false,
+        "options": { "default": "500px" }
+      }
+    ]
+  }
+}

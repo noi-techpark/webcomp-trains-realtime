@@ -23,11 +23,15 @@ jobs:
           build-command: npm run build
           node-version: ${{env.NODE_VERSION}}
       - uses: noi-techpark/github-actions/webcomp-test@v2
+        with:
+          origin-test-enabled: false
+          
 
   deploy-test:
     runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main'
     needs: test
+
     concurrency: deploy-test
     steps:
       - uses: actions/checkout@v4

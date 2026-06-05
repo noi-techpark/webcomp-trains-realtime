@@ -94,6 +94,7 @@ class TrainsRealtime extends HTMLElement {
         /* ── sidebar ── */
         #sidebar {
           width: 260px;
+          max-width: 40%;
           flex-shrink: 0;
           display: flex;
           flex-direction: column;

@@ -4,13 +4,61 @@
 
 import L from 'leaflet';
 import leafletCSS from 'leaflet/dist/leaflet.css';
+import { forceSimulation } from 'd3-force';
 
 const DEFAULT_SIRI_BASE = 'https://siri.api.dev.testingmachine.eu/anshar/rest/vm/';
 
 const DOT_R          = 5;
 const PILL_H         = 16;
-const LABEL_OFFSET_X = DOT_R * 2 + 4; // px right of dot centre where pill left edge starts
-const STACK_MARGIN   = 3;              // px gap between stacked pills
+const LABEL_OFFSET_X = DOT_R * 2 + 4;
+const STACK_MARGIN   = 3;
+
+// Rectangular bounding-box collision force for d3-force.
+// Treats each node as an axis-aligned rectangle (node.hw × node.hh half-extents).
+// Fixed nodes (node.fixed = true) act as immovable obstacles.
+// Deliberately does NOT scale by alpha so overlaps are fully resolved every tick.
+function rectCollide(padding = 0) {
+  let nodes;
+  function force() {
+    for (let i = 0; i < nodes.length; ++i) {
+      const a = nodes[i];
+      if (a.fixed) continue;
+      const aw = a.hw + padding, ah = a.hh + padding;
+      for (let j = 0; j < nodes.length; ++j) {
+        if (i === j) continue;
+        const b = nodes[j];
+        const ox = aw + b.hw + padding - Math.abs(a.x - b.x);
+        const oy = ah + b.hh + padding - Math.abs(a.y - b.y);
+        if (ox > 0 && oy > 0) {
+          const share = b.fixed ? 1 : 0.5;
+          if (ox < oy) a.x += (a.x >= b.x ? ox : -ox) * share;
+          else         a.y += (a.y >= b.y ? oy : -oy) * share;
+        }
+      }
+    }
+  }
+  force.initialize = n => { nodes = n; };
+  return force;
+}
+
+// Radial spring: pulls each badge to exactly baseR pixels from its dot centre.
+// Constrains distance only — no angular preference, so badges orbit freely.
+function ringForce(strength = 0.2) {
+  let nodes;
+  const f = alpha => {
+    for (const n of nodes) {
+      if (n.fixed || !n.item) continue;
+      const dx = n.x - n.item.dotPx.x;
+      const dy = n.y - n.item.dotPx.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const err  = dist - n.baseR; // positive = too far, negative = too close
+      n.x -= (dx / dist) * err * strength * alpha;
+      n.y -= (dy / dist) * err * strength * alpha;
+    }
+  };
+  f.initialize = ns => { nodes = ns; };
+  return f;
+}
 
 class TrainsRealtime extends HTMLElement {
   constructor() {
@@ -445,8 +493,9 @@ class TrainsRealtime extends HTMLElement {
     this._applyVisibility(this._filterQuery);
   }
 
-  // Repositions label pills radially around their dot to minimise connector length.
-  // Tries 12 angles at increasing radii; takes the first slot clear of all badges and dots.
+  // Physics-based label placement using d3-force with rectangular collision.
+  // Each badge is attracted toward the right of its dot; rectCollide pushes
+  // overlapping badges (and badges overlapping dots) apart naturally.
   _declutter() {
     if (!this._map || this._dots.size === 0) return;
 
@@ -462,65 +511,40 @@ class TrainsRealtime extends HTMLElement {
       const dotPx = this._map.latLngToContainerPoint(dot.getLatLng());
       items.push({ id, dotPx, pillW: data.pillW, label, line, lineBg, dot });
     }
+    if (items.length === 0) return;
 
-    // Left→right order: horizontally separated badges can't conflict
-    items.sort((a, b) => a.dotPx.x - b.dotPx.x);
+    // Badge nodes — start to the right, ring force keeps them at baseR from their dot
+    const badgeNodes = items.map(item => {
+      const baseR = LABEL_OFFSET_X + item.pillW / 2;
+      return {
+        x: item.dotPx.x + baseR,
+        y: item.dotPx.y,
+        hw: item.pillW / 2, hh: PILL_H / 2,
+        baseR, item,
+      };
+    });
 
-    const dotBoxes = new Map();
-    for (const item of items) {
-      const { x, y } = item.dotPx;
-      dotBoxes.set(item.id, { left: x - DOT_R, right: x + DOT_R, top: y - DOT_R, bottom: y + DOT_R });
-    }
+    // Dot nodes — fixed obstacles
+    const dotNodes = items.map(item => ({
+      x: item.dotPx.x, y: item.dotPx.y,
+      hw: DOT_R, hh: DOT_R,
+      fixed: true,
+    }));
 
-    // Preferred angles: right first, then fan out both ways, left last
-    const ANGLES = [0, -30, 30, -60, 60, 90, -90, 120, -120, 150, -150, 180]
-      .map(d => d * Math.PI / 180);
-    const STEP = PILL_H + STACK_MARGIN;
+    forceSimulation([...dotNodes, ...badgeNodes])
+      .force('collide', rectCollide(2))
+      .force('ring',    ringForce(0.2))
+      .stop()
+      .tick(300);
 
-    const placed = [];
-
-    for (const item of items) {
-      const { id, dotPx, pillW } = item;
-      const hw = pillW / 2;
-      const hh = PILL_H / 2;
-      // Base radius puts the badge edge at LABEL_OFFSET_X from the dot (same as before for angle=0)
-      const baseR = LABEL_OFFSET_X + hw;
-      let cx = dotPx.x + baseR; // fallback: natural right position
-      let cy = dotPx.y;
-
-      search: for (let ri = 0; ri <= 15; ri++) {
-        const r = baseR + ri * STEP;
-        for (const angle of ANGLES) {
-          const tcx = dotPx.x + r * Math.cos(angle);
-          const tcy = dotPx.y + r * Math.sin(angle);
-          const box = {
-            left: tcx - hw - STACK_MARGIN, right:  tcx + hw + STACK_MARGIN,
-            top:  tcy - hh - STACK_MARGIN, bottom: tcy + hh + STACK_MARGIN,
-          };
-          let conflict = false;
-          for (const p of placed) {
-            if (box.left < p.right && box.right > p.left && box.top < p.bottom && box.bottom > p.top) {
-              conflict = true; break;
-            }
-          }
-          if (!conflict) {
-            for (const [, db] of dotBoxes) {
-              if (box.left < db.right && box.right > db.left && box.top < db.bottom && box.bottom > db.top) {
-                conflict = true; break;
-              }
-            }
-          }
-          if (!conflict) { cx = tcx; cy = tcy; break search; }
-        }
-      }
-
-      placed.push({ left: cx - hw, right: cx + hw, top: cy - hh, bottom: cy + hh });
+    for (const node of badgeNodes) {
+      const { x: cx, y: cy, hw, hh, item } = node;
 
       const centerLatLng = this._map.containerPointToLatLng(L.point(cx, cy));
       item.label.setLatLng(centerLatLng);
 
-      // Connector ends at the badge edge nearest the dot
-      const dx = dotPx.x - cx, dy = dotPx.y - cy;
+      // Connector from dot to nearest point on badge edge
+      const dx = item.dotPx.x - cx, dy = item.dotPx.y - cy;
       const t = Math.min(
         dx !== 0 ? hw / Math.abs(dx) : Infinity,
         dy !== 0 ? hh / Math.abs(dy) : Infinity,

@@ -22,8 +22,9 @@ class TrainsRealtime extends HTMLElement {
     this._linesBg    = new Map(); // id → L.Polyline (white border underneath connector)
     this._lines      = new Map(); // id → L.Polyline (colored connector on top)
     this._markerData = new Map(); // id → { pillW, color }
-    this._timer      = null;
-    this._vehicles   = [];
+    this._timer        = null;
+    this._vehicles     = [];
+    this._filterQuery  = '';
   }
 
   static get observedAttributes() {
@@ -439,7 +440,7 @@ class TrainsRealtime extends HTMLElement {
       }
     }
 
-    this._declutter();
+    this._applyVisibility(this._filterQuery);
   }
 
   // Repositions label pills to eliminate overlaps while preserving N→S order.
@@ -447,9 +448,11 @@ class TrainsRealtime extends HTMLElement {
   _declutter() {
     if (!this._map || this._dots.size === 0) return;
 
-    // Collect current screen positions for all trains
+    // Collect current screen positions for visible (filter-matching) trains only
+    const q = this._filterQuery;
     const items = [];
     for (const [id, dot] of this._dots) {
+      if (q && !this._matchesQuery(id)) continue;
       const label  = this._labels.get(id);
       const line   = this._lines.get(id);
       const lineBg = this._linesBg.get(id);
@@ -520,9 +523,38 @@ class TrainsRealtime extends HTMLElement {
     }
   }
 
+  // ── map filter ───────────────────────────────────────────────────────────
+
+  _matchesQuery(id) {
+    const q = this._filterQuery;
+    if (!q) return true;
+    const v = this._vehicles.find(v => (v.MonitoredVehicleJourney.VehicleRef?.value ?? '') === id);
+    if (!v) return false;
+    const j = v.MonitoredVehicleJourney;
+    return (
+      (j.VehicleRef?.value ?? '') +
+      (j.DirectionName?.[0]?.value ?? '') +
+      (j.PublishedLineName?.[0]?.value ?? '')
+    ).toLowerCase().includes(q);
+  }
+
+  _applyVisibility(query) {
+    this._filterQuery = query;
+    for (const [id, dot] of this._dots) {
+      const matched = this._matchesQuery(id);
+      const display = matched ? '' : 'none';
+      dot.getElement()?.style.setProperty('display', display);
+      this._labels.get(id)?.getElement()?.style.setProperty('display', display);
+      this._linesBg.get(id)?.setStyle({ opacity: matched ? 1 : 0 });
+      this._lines.get(id)?.setStyle({ opacity: matched ? 0.9 : 0 });
+    }
+    this._declutter();
+  }
+
   // ── sidebar list ──────────────────────────────────────────────────────────
 
   _renderList(query = '') {
+    this._applyVisibility(query);
     const filtered = query
       ? this._vehicles.filter(v => {
           const j = v.MonitoredVehicleJourney;

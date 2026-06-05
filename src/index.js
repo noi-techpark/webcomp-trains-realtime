@@ -144,38 +144,34 @@ class TrainsRealtime extends HTMLElement {
           background: rgba(255,255,255,0.92);
           border: 1px solid #ccc;
           border-radius: 4px;
-          padding: 4px 10px;
+          padding: 4px 8px;
           font-size: 12px;
           pointer-events: none;
           box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+          display: flex;
+          align-items: center;
+          gap: 6px;
         }
         #status.err { background: rgba(255,235,235,0.95); border-color: #c33; color: #a00; }
+        #refresh-ring { display: block; flex-shrink: 0; }
 
         .train-dot   { line-height: 0; }
         .train-label { line-height: 0; cursor: pointer; }
 
-        #refresh-ring {
-          position: absolute;
-          bottom: 10px; left: 10px;
-          z-index: 1000;
-          width: 32px; height: 32px;
-          pointer-events: none;
-        }
-        #refresh-ring svg { display: block; }
       </style>
       <div id="container">
         <div id="map-wrap">
           <div id="map"></div>
-          <div id="status">Loading&hellip;</div>
-          <div id="refresh-ring">
-            <svg width="32" height="32" viewBox="0 0 32 32">
-              <circle cx="16" cy="16" r="12" fill="none"
-                      stroke="rgba(0,0,0,0.08)" stroke-width="3"/>
-              <circle id="progress-arc" cx="16" cy="16" r="12" fill="none"
-                      stroke="rgba(52,152,219,0.65)" stroke-width="3"
+          <div id="status">
+            <span id="status-text">Loading&hellip;</span>
+            <svg id="refresh-ring" width="14" height="14" viewBox="0 0 14 14">
+              <circle cx="7" cy="7" r="5" fill="none"
+                      stroke="rgba(0,0,0,0.12)" stroke-width="1.5"/>
+              <circle id="progress-arc" cx="7" cy="7" r="5" fill="none"
+                      stroke="rgba(0,0,0,0.7)" stroke-width="1.5"
                       stroke-linecap="round"
-                      stroke-dasharray="75.398" stroke-dashoffset="75.398"
-                      transform="rotate(-90 16 16)"/>
+                      stroke-dasharray="31.416" stroke-dashoffset="31.416"
+                      transform="rotate(-90 7 7)"/>
             </svg>
           </div>
           <button id="sidebar-toggle">&#x276F;</button>
@@ -191,6 +187,7 @@ class TrainsRealtime extends HTMLElement {
     `;
 
     this._statusEl   = this.shadow.querySelector('#status');
+    this._statusTextEl = this.shadow.querySelector('#status-text');
     this._progressEl = this.shadow.querySelector('#progress-arc');
     this._listEl   = this.shadow.querySelector('#train-list');
     this._countEl  = this.shadow.querySelector('#count');
@@ -256,7 +253,7 @@ class TrainsRealtime extends HTMLElement {
     const el = this._progressEl;
     if (!el) return;
     el.style.transition = 'none';
-    el.style.strokeDashoffset = '75.398'; // full offset = empty ring
+    el.style.strokeDashoffset = '31.416'; // full offset = empty ring
   }
 
   _startProgress() {
@@ -268,7 +265,7 @@ class TrainsRealtime extends HTMLElement {
   }
 
   _setStatus(msg, isErr = false) {
-    this._statusEl.textContent = msg;
+    this._statusTextEl.textContent = msg;
     this._statusEl.className = isErr ? 'err' : '';
   }
 

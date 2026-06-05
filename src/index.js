@@ -303,8 +303,8 @@ class TrainsRealtime extends HTMLElement {
     return `+${min} min`;
   }
 
-  _pillWidth(vehicleId, dest) {
-    const raw = `${vehicleId} - ${dest}`;
+  _pillWidth(lineName, dest) {
+    const raw = `${lineName} - ${dest}`;
     const text = raw.length > 18 ? raw.substring(0, 17) + '…' : raw;
     return Math.max(48, text.length * 6 + 14);
   }
@@ -325,9 +325,9 @@ class TrainsRealtime extends HTMLElement {
     });
   }
 
-  _makeLabelIcon(vehicleId, dest, delaySec) {
+  _makeLabelIcon(lineName, dest, delaySec) {
     const color = this._delayColor(delaySec);
-    const raw   = `${vehicleId} - ${dest}`;
+    const raw   = `${lineName} - ${dest}`;
     const label = this._esc(raw.length > 18 ? raw.substring(0, 17) + '…' : raw);
     const pillW = Math.max(48, label.length * 6 + 14);
 
@@ -376,14 +376,15 @@ class TrainsRealtime extends HTMLElement {
       const j = v.MonitoredVehicleJourney;
       if (!j?.VehicleLocation) continue;
 
-      const id    = j.VehicleRef?.value ?? String(Math.random());
-      const lat   = j.VehicleLocation.Latitude;
-      const lon   = j.VehicleLocation.Longitude;
-      const dest  = j.DirectionName?.[0]?.value ?? '?';
-      const delay = this._delaySeconds(j.Delay);
-      const color = this._delayColor(delay);
-      const pillW = this._pillWidth(id, dest);
-      const popup = this._popupHtml(j, id, delay, v.RecordedAtTime);
+      const id       = j.VehicleRef?.value ?? String(Math.random());
+      const lat      = j.VehicleLocation.Latitude;
+      const lon      = j.VehicleLocation.Longitude;
+      const dest     = j.DirectionName?.[0]?.value ?? '?';
+      const lineName = j.PublishedLineName?.[0]?.value ?? '?';
+      const delay    = this._delaySeconds(j.Delay);
+      const color    = this._delayColor(delay);
+      const pillW    = this._pillWidth(lineName, dest);
+      const popup    = this._popupHtml(j, id, delay, v.RecordedAtTime);
 
       seen.add(id);
       this._markerData.set(id, { pillW, color });
@@ -396,7 +397,7 @@ class TrainsRealtime extends HTMLElement {
         dot.setIcon(this._makeDotIcon(color));
         dot.getPopup().setContent(popup);
         dot.getTooltip().setContent(this._esc(dest));
-        label.setIcon(this._makeLabelIcon(id, dest, delay));
+        label.setIcon(this._makeLabelIcon(lineName, dest, delay));
         label.getPopup().setContent(popup);
         line.setStyle({ color });
       } else {
@@ -406,7 +407,7 @@ class TrainsRealtime extends HTMLElement {
           .addTo(this._map);
         this._dots.set(id, dot);
 
-        const label = L.marker([lat, lon], { icon: this._makeLabelIcon(id, dest, delay) })
+        const label = L.marker([lat, lon], { icon: this._makeLabelIcon(lineName, dest, delay) })
           .bindPopup(popup)
           .addTo(this._map);
         this._labels.set(id, label);

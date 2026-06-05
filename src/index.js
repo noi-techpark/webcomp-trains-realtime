@@ -343,7 +343,7 @@ class TrainsRealtime extends HTMLElement {
       html: svg,
       className: 'train-label',
       iconSize:   [pillW, PILL_H],
-      iconAnchor: [0, PILL_H / 2], // left-centre of pill = latlng point (connector end)
+      iconAnchor: [pillW / 2, PILL_H / 2], // centre of pill = latlng point
     });
   }
 
@@ -445,12 +445,11 @@ class TrainsRealtime extends HTMLElement {
     this._applyVisibility(this._filterQuery);
   }
 
-  // Repositions label pills to eliminate overlaps while preserving N→S order.
-  // Dots never move — only labels and their connector lines are updated.
+  // Repositions label pills radially around their dot to minimise connector length.
+  // Tries 12 angles at increasing radii; takes the first slot clear of all badges and dots.
   _declutter() {
     if (!this._map || this._dots.size === 0) return;
 
-    // Collect current screen positions for visible (filter-matching) trains only
     const q = this._filterQuery;
     const items = [];
     for (const [id, dot] of this._dots) {
@@ -464,64 +463,71 @@ class TrainsRealtime extends HTMLElement {
       items.push({ id, dotPx, pillW: data.pillW, label, line, lineBg, dot });
     }
 
-    // Sort top→bottom by dot screen Y so stacking preserves geographic N→S order
-    items.sort((a, b) => a.dotPx.y - b.dotPx.y);
+    // Left→right order: horizontally separated badges can't conflict
+    items.sort((a, b) => a.dotPx.x - b.dotPx.x);
 
-    // Fixed obstacles: bounding boxes of every dot (pills must not cover these)
     const dotBoxes = new Map();
     for (const item of items) {
       const { x, y } = item.dotPx;
-      dotBoxes.set(item.id, {
-        left: x - DOT_R, right:  x + DOT_R,
-        top:  y - DOT_R, bottom: y + DOT_R,
-      });
+      dotBoxes.set(item.id, { left: x - DOT_R, right: x + DOT_R, top: y - DOT_R, bottom: y + DOT_R });
     }
 
-    const placed = []; // bounding boxes of already-placed pills { left, right, top, bottom }
+    // Preferred angles: right first, then fan out both ways, left last
+    const ANGLES = [0, -30, 30, -60, 60, 90, -90, 120, -120, 150, -150, 180]
+      .map(d => d * Math.PI / 180);
+    const STEP = PILL_H + STACK_MARGIN;
+
+    const placed = [];
 
     for (const item of items) {
       const { id, dotPx, pillW } = item;
-      const left  = dotPx.x + LABEL_OFFSET_X;
-      const right = left + pillW;
-      let cy = dotPx.y; // natural vertical centre; pushed down when conflicting
+      const hw = pillW / 2;
+      const hh = PILL_H / 2;
+      // Base radius puts the badge edge at LABEL_OFFSET_X from the dot (same as before for angle=0)
+      const baseR = LABEL_OFFSET_X + hw;
+      let cx = dotPx.x + baseR; // fallback: natural right position
+      let cy = dotPx.y;
 
-      // Iterate until this pill no longer conflicts with any placed pill or any dot
-      let resolved = false;
-      while (!resolved) {
-        const top    = cy - PILL_H / 2 - STACK_MARGIN;
-        const bottom = cy + PILL_H / 2 + STACK_MARGIN;
-        resolved = true;
-
-        // Check against already-placed pills
-        for (const p of placed) {
-          if (left >= p.right || right <= p.left) continue;
-          if (top >= p.bottom || bottom <= p.top) continue;
-          cy = p.bottom + PILL_H / 2 + STACK_MARGIN;
-          resolved = false;
-          break;
-        }
-        if (!resolved) continue;
-
-        // Check against every dot except this train's own (own dot is always left of its pill)
-        for (const [dotId, db] of dotBoxes) {
-          if (dotId === id) continue;
-          if (left >= db.right || right <= db.left) continue;
-          if (top >= db.bottom || bottom <= db.top) continue;
-          cy = db.bottom + PILL_H / 2 + STACK_MARGIN;
-          resolved = false;
-          break;
+      search: for (let ri = 0; ri <= 15; ri++) {
+        const r = baseR + ri * STEP;
+        for (const angle of ANGLES) {
+          const tcx = dotPx.x + r * Math.cos(angle);
+          const tcy = dotPx.y + r * Math.sin(angle);
+          const box = {
+            left: tcx - hw - STACK_MARGIN, right:  tcx + hw + STACK_MARGIN,
+            top:  tcy - hh - STACK_MARGIN, bottom: tcy + hh + STACK_MARGIN,
+          };
+          let conflict = false;
+          for (const p of placed) {
+            if (box.left < p.right && box.right > p.left && box.top < p.bottom && box.bottom > p.top) {
+              conflict = true; break;
+            }
+          }
+          if (!conflict) {
+            for (const [, db] of dotBoxes) {
+              if (box.left < db.right && box.right > db.left && box.top < db.bottom && box.bottom > db.top) {
+                conflict = true; break;
+              }
+            }
+          }
+          if (!conflict) { cx = tcx; cy = tcy; break search; }
         }
       }
 
-      placed.push({ left, right, top: cy - PILL_H / 2, bottom: cy + PILL_H / 2 });
+      placed.push({ left: cx - hw, right: cx + hw, top: cy - hh, bottom: cy + hh });
 
-      // Place label so its left-centre aligns with (left, cy) on screen
-      const labelLatLng = this._map.containerPointToLatLng(L.point(left, cy));
-      item.label.setLatLng(labelLatLng);
+      const centerLatLng = this._map.containerPointToLatLng(L.point(cx, cy));
+      item.label.setLatLng(centerLatLng);
 
-      // Connector: dot GPS → label left-centre (background then foreground)
-      item.lineBg.setLatLngs([item.dot.getLatLng(), labelLatLng]);
-      item.line.setLatLngs([item.dot.getLatLng(), labelLatLng]);
+      // Connector ends at the badge edge nearest the dot
+      const dx = dotPx.x - cx, dy = dotPx.y - cy;
+      const t = Math.min(
+        dx !== 0 ? hw / Math.abs(dx) : Infinity,
+        dy !== 0 ? hh / Math.abs(dy) : Infinity,
+      );
+      const edgeLatLng = this._map.containerPointToLatLng(L.point(cx + t * dx, cy + t * dy));
+      item.lineBg.setLatLngs([item.dot.getLatLng(), edgeLatLng]);
+      item.line.setLatLngs([item.dot.getLatLng(), edgeLatLng]);
     }
   }
 

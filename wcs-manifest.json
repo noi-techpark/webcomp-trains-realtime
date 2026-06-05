@@ -36,7 +36,7 @@
         "type": "text",
         "label": "SIRI dataset ID",
         "required": false,
-        "options": { "default": "STA-trains" }
+        "options": { "default": "SAD-trains" }
       },
       {
         "key": "siri-url",

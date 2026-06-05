@@ -66,6 +66,30 @@ class TrainsRealtime extends HTMLElement {
           position: relative;
         }
 
+        /* ── sidebar toggle ── */
+        #sidebar-toggle {
+          position: absolute;
+          right: 0;
+          top: 50%;
+          transform: translateY(-50%);
+          z-index: 1001;
+          width: 22px; height: 22px;
+          border-radius: 3px;
+          background: #fff;
+          border: 1px solid #ccc;
+          box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 10px;
+          color: #555;
+          padding: 0;
+          line-height: 1;
+          user-select: none;
+        }
+        #sidebar-toggle:hover { background: #f5f5f5; }
+
         /* ── sidebar ── */
         #sidebar {
           width: 260px;
@@ -75,7 +99,9 @@ class TrainsRealtime extends HTMLElement {
           border-left: 1px solid #ddd;
           background: #fff;
           overflow: hidden;
+          transition: width 0.25s ease;
         }
+        #sidebar.collapsed { width: 0; border-left: none; }
         #search-wrap { padding: 8px; border-bottom: 1px solid #eee; }
         #search {
           width: 100%;
@@ -152,6 +178,7 @@ class TrainsRealtime extends HTMLElement {
                       transform="rotate(-90 16 16)"/>
             </svg>
           </div>
+          <button id="sidebar-toggle">&#x276F;</button>
         </div>
         <div id="sidebar">
           <div id="search-wrap">
@@ -168,6 +195,14 @@ class TrainsRealtime extends HTMLElement {
     this._listEl   = this.shadow.querySelector('#train-list');
     this._countEl  = this.shadow.querySelector('#count');
     this._searchEl = this.shadow.querySelector('#search');
+    this._sidebarEl = this.shadow.querySelector('#sidebar');
+    this._toggleEl  = this.shadow.querySelector('#sidebar-toggle');
+
+    this._toggleEl.addEventListener('click', () => {
+      const collapsed = this._sidebarEl.classList.toggle('collapsed');
+      this._toggleEl.innerHTML = collapsed ? '&#x276E;' : '&#x276F;';
+      setTimeout(() => this._map?.invalidateSize(), 260);
+    });
 
     this._searchEl.addEventListener('input', () =>
       this._renderList(this._searchEl.value.trim().toLowerCase())

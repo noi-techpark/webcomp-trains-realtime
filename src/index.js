@@ -76,7 +76,7 @@ class TrainsRealtime extends HTMLElement {
   }
 
   static get observedAttributes() {
-    return ['siri-url', 'dataset-id', 'refresh-interval'];
+    return ['siri-url', 'dataset-id', 'refresh-interval', 'negative-delay-threshold'];
   }
 
   get _siriUrl() {
@@ -88,6 +88,10 @@ class TrainsRealtime extends HTMLElement {
 
   get _refreshMs() {
     return Math.max(10, parseInt(this.getAttribute('refresh-interval') || '30')) * 1000;
+  }
+
+  get _negativeDelayThresholdSec() {
+    return parseInt(this.getAttribute('negative-delay-threshold') || '5') * 60;
   }
 
   attributeChangedCallback(_name, _old, _new) {
@@ -345,6 +349,7 @@ class TrainsRealtime extends HTMLElement {
   }
 
   _delayLabel(d) {
+    if (d < -this._negativeDelayThresholdSec) return 'not available';
     const min = Math.round(Math.abs(d) / 60);
     if (d < 0)   return `−${min} min`;
     if (d === 0) return 'On time';

@@ -341,6 +341,7 @@ class TrainsRealtime extends HTMLElement {
   }
 
   _delayColor(d) {
+    if (d < -this._negativeDelayThresholdSec) return '#aaaaaa'; // not available → light grey
     if (d < 0)    return '#5dade2'; // early     → light blue
     if (d === 0)  return '#27ae60'; // on time   → green
     if (d < 300)  return '#f1c40f'; // < 5 min  → yellow

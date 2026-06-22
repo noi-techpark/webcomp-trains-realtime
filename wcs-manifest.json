@@ -51,6 +51,13 @@
         "label": "Auto-refresh interval in seconds (minimum 10)",
         "required": false,
         "options": { "default": 30 }
+      },
+      {
+        "key": "negative-delay-threshold",
+        "type": "number",
+        "label": "Threshold in minutes beyond which a negative delay is shown as 'not available'",
+        "required": false,
+        "options": { "default": 5 }
       }
     ]
   }

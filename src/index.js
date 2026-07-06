@@ -6,7 +6,7 @@ import L from 'leaflet';
 import leafletCSS from 'leaflet/dist/leaflet.css';
 import { forceSimulation } from 'd3-force';
 
-const DEFAULT_SIRI_BASE = 'https://siri.api.dev.testingmachine.eu/anshar/rest/vm/';
+const DEFAULT_SIRI_BASE = typeof SIRI_BASE_URL !== 'undefined' ? SIRI_BASE_URL : 'https://siri.api.opendatahub.com/v1/rest/vm/';
 
 const DOT_R          = 5;
 const PILL_H         = 16;

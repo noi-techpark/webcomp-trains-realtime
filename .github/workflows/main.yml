@@ -31,6 +31,8 @@ jobs:
     runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main'
     needs: test
+    env:
+      SIRI_BASE_URL: https://siri.api.dev.testingmachine.eu/v1/rest/vm/
 
     concurrency: deploy-test
     steps:

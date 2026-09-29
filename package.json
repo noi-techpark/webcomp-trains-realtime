@@ -6,8 +6,10 @@
     "start": "webpack serve --config webpack.dev.js"
   },
   "dependencies": {
+    "@maplibre/maplibre-gl-leaflet": "^0.1.4",
     "d3-force": "^3.0.0",
-    "leaflet": "^1.9.4"
+    "leaflet": "^1.9.4",
+    "maplibre-gl": "^4.7.1"
   },
   "devDependencies": {
     "webpack": "^5.107.2",

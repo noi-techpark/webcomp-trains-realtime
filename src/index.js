@@ -4,35 +4,42 @@
 
 import L from 'leaflet';
 import leafletCSS from 'leaflet/dist/leaflet.css';
+import '@maplibre/maplibre-gl-leaflet';
+import maplibreCSS from 'maplibre-gl/dist/maplibre-gl.css';
 import { forceSimulation } from 'd3-force';
 
 const DEFAULT_SIRI_BASE = typeof SIRI_BASE_URL !== 'undefined' ? SIRI_BASE_URL : 'https://siri.api.opendatahub.com/v1/rest/vm/';
 
-const DOT_R          = 5;
-const PILL_H         = 16;
+const DOT_R = 5;
+const PILL_H = 16;
 const LABEL_OFFSET_X = DOT_R * 2 + 4;
-const STACK_MARGIN   = 3;
+const STACK_MARGIN = 3;
 
 // Rectangular bounding-box collision force for d3-force.
 // Treats each node as an axis-aligned rectangle (node.hw × node.hh half-extents).
 // Fixed nodes (node.fixed = true) act as immovable obstacles.
 // Deliberately does NOT scale by alpha so overlaps are fully resolved every tick.
-function rectCollide(padding = 0) {
+function rectCollide(padding = 0)
+{
   let nodes;
-  function force() {
-    for (let i = 0; i < nodes.length; ++i) {
+  function force()
+  {
+    for (let i = 0; i < nodes.length; ++i)
+    {
       const a = nodes[i];
       if (a.fixed) continue;
       const aw = a.hw + padding, ah = a.hh + padding;
-      for (let j = 0; j < nodes.length; ++j) {
+      for (let j = 0; j < nodes.length; ++j)
+      {
         if (i === j) continue;
         const b = nodes[j];
         const ox = aw + b.hw + padding - Math.abs(a.x - b.x);
         const oy = ah + b.hh + padding - Math.abs(a.y - b.y);
-        if (ox > 0 && oy > 0) {
+        if (ox > 0 && oy > 0)
+        {
           const share = b.fixed ? 1 : 0.5;
           if (ox < oy) a.x += (a.x >= b.x ? ox : -ox) * share;
-          else         a.y += (a.y >= b.y ? oy : -oy) * share;
+          else a.y += (a.y >= b.y ? oy : -oy) * share;
         }
       }
     }
@@ -43,15 +50,18 @@ function rectCollide(padding = 0) {
 
 // Radial spring: pulls each badge to exactly baseR pixels from its dot centre.
 // Constrains distance only — no angular preference, so badges orbit freely.
-function ringForce(strength = 0.2) {
+function ringForce(strength = 0.2)
+{
   let nodes;
-  const f = alpha => {
-    for (const n of nodes) {
+  const f = alpha =>
+  {
+    for (const n of nodes)
+    {
       if (n.fixed || !n.item) continue;
       const dx = n.x - n.item.dotPx.x;
       const dy = n.y - n.item.dotPx.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      const err  = dist - n.baseR; // positive = too far, negative = too close
+      const err = dist - n.baseR; // positive = too far, negative = too close
       n.x -= (dx / dist) * err * strength * alpha;
       n.y -= (dy / dist) * err * strength * alpha;
     }
@@ -60,41 +70,48 @@ function ringForce(strength = 0.2) {
   return f;
 }
 
-class TrainsRealtime extends HTMLElement {
-  constructor() {
+class TrainsRealtime extends HTMLElement
+{
+  constructor()
+  {
     super();
-    this.shadow      = this.attachShadow({ mode: 'open' });
-    this._map        = null;
-    this._dots       = new Map(); // id → L.Marker  (exact GPS position, never moved)
-    this._labels     = new Map(); // id → L.Marker  (pill, repositioned by _declutter)
-    this._linesBg    = new Map(); // id → L.Polyline (white border underneath connector)
-    this._lines      = new Map(); // id → L.Polyline (colored connector on top)
+    this.shadow = this.attachShadow({ mode: 'open' });
+    this._map = null;
+    this._dots = new Map(); // id → L.Marker  (exact GPS position, never moved)
+    this._labels = new Map(); // id → L.Marker  (pill, repositioned by _declutter)
+    this._linesBg = new Map(); // id → L.Polyline (white border underneath connector)
+    this._lines = new Map(); // id → L.Polyline (colored connector on top)
     this._markerData = new Map(); // id → { pillW, color }
-    this._timer        = null;
-    this._vehicles     = [];
-    this._filterQuery  = '';
+    this._timer = null;
+    this._vehicles = [];
+    this._filterQuery = '';
   }
 
-  static get observedAttributes() {
+  static get observedAttributes()
+  {
     return ['siri-url', 'dataset-id', 'refresh-interval', 'negative-delay-threshold'];
   }
 
-  get _siriUrl() {
+  get _siriUrl()
+  {
     const custom = this.getAttribute('siri-url');
     if (custom) return custom;
     const datasetId = this.getAttribute('dataset-id') || 'SADtrains';
     return `${DEFAULT_SIRI_BASE}?datasetId=${encodeURIComponent(datasetId)}`;
   }
 
-  get _refreshMs() {
+  get _refreshMs()
+  {
     return Math.max(10, parseInt(this.getAttribute('refresh-interval') || '30')) * 1000;
   }
 
-  get _negativeDelayThresholdSec() {
+  get _negativeDelayThresholdSec()
+  {
     return parseInt(this.getAttribute('negative-delay-threshold') || '5') * 60;
   }
 
-  attributeChangedCallback(_name, _old, _new) {
+  attributeChangedCallback(_name, _old, _new)
+  {
     if (!this._map) return;
     this._restartTimer();
     this._fetchAndUpdate();
@@ -102,15 +119,18 @@ class TrainsRealtime extends HTMLElement {
 
   connectedCallback() { this._mount(); }
 
-  disconnectedCallback() {
+  disconnectedCallback()
+  {
     this._stopTimer();
     if (this._map) { this._map.remove(); this._map = null; }
   }
 
-  _mount() {
+  _mount()
+  {
     this.shadow.innerHTML = `
       <style>
         ${leafletCSS}
+        ${maplibreCSS}
         :host { display: block; height: 100%; font-family: sans-serif; }
         #container {
           display: flex;
@@ -240,16 +260,17 @@ class TrainsRealtime extends HTMLElement {
       </div>
     `;
 
-    this._statusEl   = this.shadow.querySelector('#status');
+    this._statusEl = this.shadow.querySelector('#status');
     this._statusTextEl = this.shadow.querySelector('#status-text');
     this._progressEl = this.shadow.querySelector('#progress-arc');
-    this._listEl   = this.shadow.querySelector('#train-list');
-    this._countEl  = this.shadow.querySelector('#count');
+    this._listEl = this.shadow.querySelector('#train-list');
+    this._countEl = this.shadow.querySelector('#count');
     this._searchEl = this.shadow.querySelector('#search');
     this._sidebarEl = this.shadow.querySelector('#sidebar');
-    this._toggleEl  = this.shadow.querySelector('#sidebar-toggle');
+    this._toggleEl = this.shadow.querySelector('#sidebar-toggle');
 
-    this._toggleEl.addEventListener('click', () => {
+    this._toggleEl.addEventListener('click', () =>
+    {
       const collapsed = this._sidebarEl.classList.toggle('collapsed');
       this._toggleEl.innerHTML = collapsed ? '&#x276E;' : '&#x276F;';
       setTimeout(() => this._map?.invalidateSize(), 260);
@@ -262,9 +283,12 @@ class TrainsRealtime extends HTMLElement {
     this._map = L.map(this.shadow.querySelector('#map'), { preferCanvas: true })
       .setView([46.55, 11.35], 9);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      maxZoom: 19,
+    L.maplibreGL({
+      style: 'https://tiles.openfreemap.org/styles/positron',
+      attribution:
+        '&copy; <a target="_blank" href="https://openfreemap.org">OpenFreeMap</a> ' +
+        '&copy; <a target="_blank" href="https://www.openmaptiles.org/">OpenMapTiles</a> ' +
+        '&copy; <a target="_blank" href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(this._map);
 
     // Re-run declutter whenever the viewport changes so labels track correctly
@@ -274,18 +298,22 @@ class TrainsRealtime extends HTMLElement {
     this._restartTimer();
   }
 
-  _stopTimer() {
+  _stopTimer()
+  {
     if (this._timer) { clearInterval(this._timer); this._timer = null; }
   }
 
-  _restartTimer() {
+  _restartTimer()
+  {
     this._stopTimer();
     this._timer = setInterval(() => this._fetchAndUpdate(), this._refreshMs);
   }
 
-  async _fetchAndUpdate() {
+  async _fetchAndUpdate()
+  {
     this._resetProgress();
-    try {
+    try
+    {
       const res = await fetch(this._siriUrl, { headers: { Accept: 'application/json' } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -296,21 +324,25 @@ class TrainsRealtime extends HTMLElement {
       this._updateMarkers(this._vehicles);
       this._renderList(this._searchEl.value.trim().toLowerCase());
       this._setStatus(`${this._vehicles.length} trains · ${new Date().toLocaleTimeString()}`);
-    } catch (e) {
+    } catch (e)
+    {
       this._setStatus(`Error: ${e.message}`, true);
-    } finally {
+    } finally
+    {
       this._startProgress();
     }
   }
 
-  _resetProgress() {
+  _resetProgress()
+  {
     const el = this._progressEl;
     if (!el) return;
     el.style.transition = 'none';
     el.style.strokeDashoffset = '31.416'; // full offset = empty ring
   }
 
-  _startProgress() {
+  _startProgress()
+  {
     const el = this._progressEl;
     if (!el) return;
     el.getBoundingClientRect(); // force reflow so the reset takes effect first
@@ -318,20 +350,23 @@ class TrainsRealtime extends HTMLElement {
     el.style.strokeDashoffset = '0'; // animate to full ring
   }
 
-  _setStatus(msg, isErr = false) {
+  _setStatus(msg, isErr = false)
+  {
     this._statusTextEl.textContent = msg;
     this._statusEl.className = isErr ? 'err' : '';
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────
 
-  _esc(s) {
+  _esc(s)
+  {
     return String(s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  _delaySeconds(iso) {
+  _delaySeconds(iso)
+  {
     if (!iso || iso === 'PT0S') return 0;
     const neg = iso.startsWith('-');
     const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
@@ -340,24 +375,27 @@ class TrainsRealtime extends HTMLElement {
     return neg ? -secs : secs;
   }
 
-  _delayColor(d) {
+  _delayColor(d)
+  {
     if (d < -this._negativeDelayThresholdSec) return '#aaaaaa'; // not available → light grey
-    if (d < 0)    return '#5dade2'; // early     → light blue
-    if (d === 0)  return '#27ae60'; // on time   → green
-    if (d < 300)  return '#f1c40f'; // < 5 min  → yellow
+    if (d < 0) return '#5dade2'; // early     → light blue
+    if (d === 0) return '#27ae60'; // on time   → green
+    if (d < 300) return '#f1c40f'; // < 5 min  → yellow
     if (d < 1800) return '#e67e22'; // 5–30 min → orange
     return '#c0392b';               // > 30 min → red
   }
 
-  _delayLabel(d) {
+  _delayLabel(d)
+  {
     if (d < -this._negativeDelayThresholdSec) return 'not available';
     const min = Math.round(Math.abs(d) / 60);
-    if (d < 0)   return `−${min} min`;
+    if (d < 0) return `−${min} min`;
     if (d === 0) return 'On time';
     return `+${min} min`;
   }
 
-  _pillWidth(lineName, dest) {
+  _pillWidth(lineName, dest)
+  {
     const raw = `${lineName} - ${dest}`;
     const text = raw.length > 18 ? raw.substring(0, 17) + '…' : raw;
     return Math.max(48, text.length * 6 + 14);
@@ -365,7 +403,8 @@ class TrainsRealtime extends HTMLElement {
 
   // ── icons ─────────────────────────────────────────────────────────────────
 
-  _makeDotIcon(color) {
+  _makeDotIcon(color)
+  {
     const S = DOT_R * 2;
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}">
       <circle cx="${DOT_R}" cy="${DOT_R}" r="${DOT_R - 1}"
@@ -374,14 +413,15 @@ class TrainsRealtime extends HTMLElement {
     return L.divIcon({
       html: svg,
       className: 'train-dot',
-      iconSize:   [S, S],
+      iconSize: [S, S],
       iconAnchor: [DOT_R, DOT_R], // centre of circle = GPS point
     });
   }
 
-  _makeLabelIcon(lineName, dest, delaySec) {
+  _makeLabelIcon(lineName, dest, delaySec)
+  {
     const color = this._delayColor(delaySec);
-    const raw   = `${lineName} - ${dest}`;
+    const raw = `${lineName} - ${dest}`;
     const label = this._esc(raw.length > 18 ? raw.substring(0, 17) + '…' : raw);
     const pillW = Math.max(48, label.length * 6 + 14);
 
@@ -396,21 +436,22 @@ class TrainsRealtime extends HTMLElement {
     return L.divIcon({
       html: svg,
       className: 'train-label',
-      iconSize:   [pillW, PILL_H],
+      iconSize: [pillW, PILL_H],
       iconAnchor: [pillW / 2, PILL_H / 2], // centre of pill = latlng point
     });
   }
 
   // ── markers ───────────────────────────────────────────────────────────────
 
-  _popupHtml(journey, vehicleId, delaySec, recordedAt) {
-    const line     = this._esc(journey.PublishedLineName?.[0]?.value ?? '?');
-    const dest     = this._esc(journey.DirectionName?.[0]?.value ?? '?');
-    const dir      = this._esc(journey.DirectionRef?.value ?? '?');
+  _popupHtml(journey, vehicleId, delaySec, recordedAt)
+  {
+    const line = this._esc(journey.PublishedLineName?.[0]?.value ?? '?');
+    const dest = this._esc(journey.DirectionName?.[0]?.value ?? '?');
+    const dir = this._esc(journey.DirectionRef?.value ?? '?');
     const operator = this._esc(journey.OperatorRef?.value ?? '?');
-    const color    = this._delayColor(delaySec);
+    const color = this._delayColor(delaySec);
     const delayTxt = this._esc(this._delayLabel(delaySec));
-    const updated  = new Date(recordedAt).toLocaleTimeString();
+    const updated = new Date(recordedAt).toLocaleTimeString();
     return `
       <div style="min-width:160px;font-family:sans-serif;font-size:13px;line-height:1.6">
         <b style="font-size:14px">Train ${this._esc(vehicleId)}</b><br>
@@ -423,30 +464,33 @@ class TrainsRealtime extends HTMLElement {
       </div>`;
   }
 
-  _updateMarkers(vehicles) {
+  _updateMarkers(vehicles)
+  {
     const seen = new Set();
 
-    for (const v of vehicles) {
+    for (const v of vehicles)
+    {
       const j = v.MonitoredVehicleJourney;
       if (!j?.VehicleLocation) continue;
 
-      const id       = j.VehicleRef?.value ?? String(Math.random());
-      const lat      = j.VehicleLocation.Latitude;
-      const lon      = j.VehicleLocation.Longitude;
-      const dest     = j.DirectionName?.[0]?.value ?? '?';
+      const id = j.VehicleRef?.value ?? String(Math.random());
+      const lat = j.VehicleLocation.Latitude;
+      const lon = j.VehicleLocation.Longitude;
+      const dest = j.DirectionName?.[0]?.value ?? '?';
       const lineName = j.PublishedLineName?.[0]?.value ?? '?';
-      const delay    = this._delaySeconds(j.Delay);
-      const color    = this._delayColor(delay);
-      const pillW    = this._pillWidth(lineName, dest);
-      const popup    = this._popupHtml(j, id, delay, v.RecordedAtTime);
+      const delay = this._delaySeconds(j.Delay);
+      const color = this._delayColor(delay);
+      const pillW = this._pillWidth(lineName, dest);
+      const popup = this._popupHtml(j, id, delay, v.RecordedAtTime);
 
       seen.add(id);
       this._markerData.set(id, { pillW, color });
 
-      if (this._dots.has(id)) {
-        const dot   = this._dots.get(id);
+      if (this._dots.has(id))
+      {
+        const dot = this._dots.get(id);
         const label = this._labels.get(id);
-        const line  = this._lines.get(id);
+        const line = this._lines.get(id);
         dot.setLatLng([lat, lon]);
         dot.setIcon(this._makeDotIcon(color));
         dot.getPopup().setContent(popup);
@@ -454,7 +498,8 @@ class TrainsRealtime extends HTMLElement {
         label.setIcon(this._makeLabelIcon(lineName, dest, delay));
         label.getPopup().setContent(popup);
         line.setStyle({ color });
-      } else {
+      } else
+      {
         const dot = L.marker([lat, lon], { icon: this._makeDotIcon(color), zIndexOffset: 100 })
           .bindPopup(popup)
           .bindTooltip(this._esc(dest))
@@ -482,8 +527,10 @@ class TrainsRealtime extends HTMLElement {
       }
     }
 
-    for (const [id, dot] of this._dots) {
-      if (!seen.has(id)) {
+    for (const [id, dot] of this._dots)
+    {
+      if (!seen.has(id))
+      {
         dot.remove();
         this._labels.get(id)?.remove();
         this._linesBg.get(id)?.remove();
@@ -502,17 +549,19 @@ class TrainsRealtime extends HTMLElement {
   // Physics-based label placement using d3-force with rectangular collision.
   // Each badge is attracted toward the right of its dot; rectCollide pushes
   // overlapping badges (and badges overlapping dots) apart naturally.
-  _declutter() {
+  _declutter()
+  {
     if (!this._map || this._dots.size === 0) return;
 
     const q = this._filterQuery;
     const items = [];
-    for (const [id, dot] of this._dots) {
+    for (const [id, dot] of this._dots)
+    {
       if (q && !this._matchesQuery(id)) continue;
-      const label  = this._labels.get(id);
-      const line   = this._lines.get(id);
+      const label = this._labels.get(id);
+      const line = this._lines.get(id);
       const lineBg = this._linesBg.get(id);
-      const data   = this._markerData.get(id);
+      const data = this._markerData.get(id);
       if (!label || !line || !lineBg || !data) continue;
       const dotPx = this._map.latLngToContainerPoint(dot.getLatLng());
       items.push({ id, dotPx, pillW: data.pillW, label, line, lineBg, dot });
@@ -520,7 +569,8 @@ class TrainsRealtime extends HTMLElement {
     if (items.length === 0) return;
 
     // Badge nodes — start to the right, ring force keeps them at baseR from their dot
-    const badgeNodes = items.map(item => {
+    const badgeNodes = items.map(item =>
+    {
       const baseR = LABEL_OFFSET_X + item.pillW / 2;
       return {
         x: item.dotPx.x + baseR,
@@ -539,11 +589,12 @@ class TrainsRealtime extends HTMLElement {
 
     forceSimulation([...dotNodes, ...badgeNodes])
       .force('collide', rectCollide(2))
-      .force('ring',    ringForce(0.2))
+      .force('ring', ringForce(0.2))
       .stop()
       .tick(300);
 
-    for (const node of badgeNodes) {
+    for (const node of badgeNodes)
+    {
       const { x: cx, y: cy, hw, hh, item } = node;
 
       const centerLatLng = this._map.containerPointToLatLng(L.point(cx, cy));
@@ -563,7 +614,8 @@ class TrainsRealtime extends HTMLElement {
 
   // ── map filter ───────────────────────────────────────────────────────────
 
-  _matchesQuery(id) {
+  _matchesQuery(id)
+  {
     const q = this._filterQuery;
     if (!q) return true;
     const v = this._vehicles.find(v => (v.MonitoredVehicleJourney.VehicleRef?.value ?? '') === id);
@@ -576,9 +628,11 @@ class TrainsRealtime extends HTMLElement {
     ).toLowerCase().includes(q);
   }
 
-  _applyVisibility(query) {
+  _applyVisibility(query)
+  {
     this._filterQuery = query;
-    for (const [id, dot] of this._dots) {
+    for (const [id, dot] of this._dots)
+    {
       const matched = this._matchesQuery(id);
       const display = matched ? '' : 'none';
       dot.getElement()?.style.setProperty('display', display);
@@ -591,17 +645,19 @@ class TrainsRealtime extends HTMLElement {
 
   // ── sidebar list ──────────────────────────────────────────────────────────
 
-  _renderList(query = '') {
+  _renderList(query = '')
+  {
     this._applyVisibility(query);
     const filtered = query
-      ? this._vehicles.filter(v => {
-          const j = v.MonitoredVehicleJourney;
-          return (
-            (j.VehicleRef?.value ?? '') +
-            (j.DirectionName?.[0]?.value ?? '') +
-            (j.PublishedLineName?.[0]?.value ?? '')
-          ).toLowerCase().includes(query);
-        })
+      ? this._vehicles.filter(v =>
+      {
+        const j = v.MonitoredVehicleJourney;
+        return (
+          (j.VehicleRef?.value ?? '') +
+          (j.DirectionName?.[0]?.value ?? '') +
+          (j.PublishedLineName?.[0]?.value ?? '')
+        ).toLowerCase().includes(query);
+      })
       : this._vehicles;
 
     this._countEl.textContent = query
@@ -610,13 +666,14 @@ class TrainsRealtime extends HTMLElement {
 
     const activeId = this._listEl.querySelector('.ti.active')?.dataset.id;
 
-    this._listEl.innerHTML = filtered.map(v => {
-      const j      = v.MonitoredVehicleJourney;
-      const id     = j.VehicleRef?.value ?? '?';
-      const dest   = j.DirectionName?.[0]?.value ?? '?';
-      const line   = j.PublishedLineName?.[0]?.value ?? '?';
-      const delay  = this._delaySeconds(j.Delay);
-      const color  = this._delayColor(delay);
+    this._listEl.innerHTML = filtered.map(v =>
+    {
+      const j = v.MonitoredVehicleJourney;
+      const id = j.VehicleRef?.value ?? '?';
+      const dest = j.DirectionName?.[0]?.value ?? '?';
+      const line = j.PublishedLineName?.[0]?.value ?? '?';
+      const delay = this._delaySeconds(j.Delay);
+      const color = this._delayColor(delay);
       const active = id === activeId ? ' active' : '';
       return `<li class="ti${active}" data-id="${this._esc(id)}">
         <div class="ti-head">
@@ -630,8 +687,10 @@ class TrainsRealtime extends HTMLElement {
       </li>`;
     }).join('');
 
-    this._listEl.querySelectorAll('.ti').forEach(el => {
-      el.addEventListener('click', () => {
+    this._listEl.querySelectorAll('.ti').forEach(el =>
+    {
+      el.addEventListener('click', () =>
+      {
         const dot = this._dots.get(el.dataset.id);
         if (!dot) return;
         this._listEl.querySelectorAll('.ti').forEach(x => x.classList.remove('active'));

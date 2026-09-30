@@ -4,6 +4,8 @@
 
 import L from 'leaflet';
 import leafletCSS from 'leaflet/dist/leaflet.css';
+import '@maplibre/maplibre-gl-leaflet';
+import maplibreCSS from 'maplibre-gl/dist/maplibre-gl.css';
 import { forceSimulation } from 'd3-force';
 
 const DEFAULT_SIRI_BASE = typeof SIRI_BASE_URL !== 'undefined' ? SIRI_BASE_URL : 'https://siri.api.opendatahub.com/v1/rest/vm/';
@@ -111,6 +113,7 @@ class TrainsRealtime extends HTMLElement {
     this.shadow.innerHTML = `
       <style>
         ${leafletCSS}
+        ${maplibreCSS}
         :host { display: block; height: 100%; font-family: sans-serif; }
         #container {
           display: flex;
@@ -262,9 +265,12 @@ class TrainsRealtime extends HTMLElement {
     this._map = L.map(this.shadow.querySelector('#map'), { preferCanvas: true })
       .setView([46.55, 11.35], 9);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      maxZoom: 19,
+    L.maplibreGL({
+      style: 'https://tiles.openfreemap.org/styles/positron',
+      attribution:
+        '&copy; <a target="_blank" href="https://openfreemap.org">OpenFreeMap</a> ' +
+        '&copy; <a target="_blank" href="https://www.openmaptiles.org/">OpenMapTiles</a> ' +
+        '&copy; <a target="_blank" href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(this._map);
 
     // Re-run declutter whenever the viewport changes so labels track correctly
